@@ -2,6 +2,12 @@
 
 {1 Philosophy: Your Server as a Function}
 
+{[
+(* A Tapak handler is just a function *)
+let hello request =
+  Response.of_html "<h1>Hello!</h1>"
+]}
+
 Tapak is built on the "Your Server as a Function" paradigm pioneered by {{:https://monkey.org/~marius/funsrv.pdf} Marius Eriksen at Twitter} and implemented in {{:https://twitter.github.io/finagle/} Finagle}. This approach treats server components as composable, type-safe functions that transform requests into responses.
 
 The key insight: if your server is just a function, you can use standard functional programming techniques—composition, transformation, and abstraction—to build complex systems from simple building blocks.
@@ -113,48 +119,29 @@ let app = App.create ~handler ()
 {1 Request Processing Flow}
 
 Middleware execution follows the "onion" model:
-
-{v
-┌─────────────────────────────────────────────┐
-│  Middleware 1 (outermost)                   │
-│  ┌───────────────────────────────────────┐  │
-│  │  Middleware 2                         │  │
-│  │  ┌─────────────────────────────────┐  │  │
-│  │  │  Middleware 3 (innermost)       │  │  │
-│  │  │  ┌───────────────────────────┐  │  │  │
-│  │  │  │  Handler                  │  │  │  │
-│  │  │  │  (business logic)         │  │  │  │
-│  │  │  └───────────────────────────┘  │  │  │
-│  │  └─────────────────────────────────┘  │  │
-│  └───────────────────────────────────────┘  │
-└─────────────────────────────────────────────┘
-
-Request  ────────────────────────────────────→
-           ←────────────────────────────────── Response
-v}
-
-Given [app = handler <++> \[mw1; mw2; mw3\]]:
-
-{b Request flow:}
-1. [mw1] receives request (outermost)
-2. [mw2] receives request
-3. [mw3] receives request (innermost)
-4. [handler] processes request
-
-{b Response flow:}
-1. [handler] returns response
-2. [mw3] processes response
-3. [mw2] processes response
-4. [mw1] processes response (outermost)
-
-This is implemented using [List.fold_right]:
+- The {b request} flows left-to-right through the middleware list.
+- The {b response} flows right-to-left back through the same stack.
 
 {[
-let apply_all middlewares handler =
-  List.fold_right (fun mw acc -> mw.filter acc) middlewares handler
+(* Request flow *)
+middleware_1 |> middleware_2 |> middleware_3 |> handler
 ]}
 
-The first middleware in the list becomes the outermost wrapper.
+{[
+(* Response flow *)
+handler |> middleware_3 |> middleware_2 |> middleware_1
+]}
+
+{[
+let app =
+  App.create ~handler ()
+  <++> [ logger; rate_limit; auth ]
+]}
+
+{[
+Request: logger → rate_limit → auth → handler
+Response: handler → auth → rate_limit → logger
+]}
 
 {1 Why This Works: No Monads Needed}
 
